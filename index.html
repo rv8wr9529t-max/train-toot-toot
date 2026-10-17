@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>钢铁巨龙 · 火车模拟器 Pro</title>
+<style>
+  :root{--cyan:#6fd3ff;--bg:#05080c;--glass:rgba(10,18,28,.82);--border:rgba(111,211,255,.25);--red:#ff5b5b;--gold:#ffcc00;}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:system-ui,-apple-system,sans-serif;color:#fff;}
+  canvas{display:block;position:absolute;inset:0;}
+  .glass{background:var(--glass);border:1px solid var(--border);border-radius:14px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,.6);position:absolute;pointer-events:auto;}
+  
+  #dash{top:16px;right:16px;width:200px;padding:16px;text-align:center;transition:width .2s;}
+  #speed{font-size:58px;font-weight:900;color:var(--cyan);line-height:1;text-shadow:0 0 20px rgba(111,211,255,.6);font-family:monospace;}
+  .unit{font-size:11px;color:#8ba9c4;letter-spacing:2px;margin-bottom:10px;}
+  .row{display:flex;justify-content:space-between;border-top:1px solid #2a3947;padding-top:10px;margin-top:10px;}
+  .label{font-size:11px;color:#8ba9c4;}
+  .val{font-size:18px;font-weight:800;}
+  #warning{margin-top:10px;font-size:13px;font-weight:900;color:var(--red);background:rgba(255,91,91,.15);padding:6px;border-radius:6px;border:1px solid var(--red);opacity:0;transition:.2s;}
+  #warning.show{opacity:1;animation:blink .4s infinite alternate;}
+  @keyframes blink{from{opacity:.4}to{opacity:1}}
+
+  #controls{top:16px;left:16px;padding:14px 16px;font-size:12px;color:#8ba9c4;line-height:1.9;}
+  #controls h3{color:var(--cyan);font-size:13px;margin-bottom:6px;letter-spacing:1px;}
+  kbd{background:#1f2f3d;border:1px solid #38526a;border-radius:4px;padding:1px 6px;font-family:monospace;font-size:11px;color:#fff;margin-right:4px;}
+
+  #pad{display:none;position:absolute;bottom:20px;left:16px;right:16px;gap:12px;z-index:100;}
+  .m-btn{flex:1;padding:20px 0;font-size:18px;font-weight:900;border-radius:14px;border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(12px);color:#fff;transition:.08s;font-family:inherit;}
+  .m-btn:active{transform:scale(.94);background:var(--cyan);color:#000;border-color:var(--cyan);}
+  .m-btn.warn:active{background:var(--red);border-color:var(--red);}
+
+  #overlay{position:absolute;inset:0;background:rgba(5,8,12,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;transition:opacity .5s;}
+  #start-btn{font-size:22px;font-weight:900;color:#000;background:linear-gradient(135deg,#6fd3ff,#39a8e0);padding:16px 60px;border-radius:14px;border:none;cursor:pointer;box-shadow:0 0 40px rgba(111,211,255,.5);transition:.2s;margin-top:30px;font-family:inherit;}
+  #start-btn:active{transform:scale(.95);}
+  h1{font-size:36px;letter-spacing:6px;text-shadow:0 0 30px var(--cyan);}
+  #crash{position:absolute;inset:0;background:rgba(20,0,0,.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:1001;font-size:56px;font-weight:900;color:var(--red);text-shadow:0 0 40px var(--red);text-align:center;gap:20px;}
+  #crash button{padding:14px 40px;font-size:18px;font-weight:900;border-radius:12px;border:1px solid var(--red);background:transparent;color:#fff;font-family:inherit;}
+
+  @media (hover:none),(max-width:800px){
+    #controls{display:none;}
+    #pad{display:flex;}
+    #dash{width:150px;padding:12px;top:12px;right:12px;}
+    #speed{font-size:42px;}
+    .val{font-size:15px;}
+    h1{font-size:26px;letter-spacing:4px;}
+    #start-btn{font-size:18px;padding:14px 44px;}
+    #crash{font-size:36px;}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="controls" class="glass">
+  <h3>驾 驶 指 南</h3>
+  <div><kbd>W</kbd><kbd>↑</kbd> 加牵引</div>
+  <div><kbd>S</kbd><kbd>↓</kbd> 减牵引 / 制动</div>
+  <div><kbd>空格</kbd> 紧急制动</div>
+  <div><kbd>C</kbd> 切换视角</div>
+  <div><kbd>H</kbd> 鸣笛 / <kbd>N</kbd> 昼 / 夜切换</div>
+</div>
+
+<div id="dash" class="glass">
+  <div class="label" style="letter-spacing:2px;">当前速度</div>
+  <div id="speed">0</div>
+  <div class="unit">KM/H</div>
+  <div class="row">
+    <div style="text-align:left;">
+      <div class="label">限速</div>
+      <div id="limit" class="val" style="color:var(--gold);">80</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="label">信号</div>
+      <div id="sig" class="val" style="color:#00ff55;">🟢</div>
+    </div>
+  </div>
+  <div id="warning">⚠ 超速警告</div>
+</div>
+
+<div id="pad">
+  <button class="m-btn warn" id="b-brake">刹车</button>
+  <button class="m-btn" id="b-horn">鸣笛</button>
+  <button class="m-btn" id="b-view">视角</button>
+  <button class="m-btn" id="b-power">加速</button>
+</div>
+
+<div id="overlay">
+  <h1>钢铁巨龙</h1>
+  <div style="color:var(--cyan);letter-spacing:4px;font-size:12px;margin-top:8px;">TRAIN SIMULATOR PRO</div>
+  <button id="start-btn">点 击 发 车</button>
+</div>
+
+<div id="crash">
+  💥 列车脱轨
+  <button onclick="location.reload()">重新开始</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+<script>
+'use strict';
+
+// ========================
+// 基础渲染设置
+// ========================
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a1520);
+scene.fog = new THREE.Fog(0x0a1520, 120, 700);
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 3000);
+
+// ========================
+// 光照系统
+// ========================
+const hemi = new THREE.HemisphereLight(0x9fc4e8, 0x1a2230, 1.4);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xffeedd, 2.2);
+sun.position.set(-80, 150, 80);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -80;
+sun.shadow.camera.right = 80;
+sun.shadow.camera.top = 80;
+sun.shadow.camera.bottom = -80;
+sun.shadow.camera.near = 5;
+sun.shadow.camera.far = 400;
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+scene.add(sun.target);
+
+// ========================
+// 材质字典
+// ========================
+const MAT = {
+  body: new THREE.MeshStandardMaterial({ color: 0xcc2020, metalness: 0.5, roughness: 0.35 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.7, roughness: 0.4 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x88ccff, metalness: 0.95, roughness: 0.08, transparent: true, opacity: 0.65, emissive: 0x223344, emissiveIntensity: 0.4 }),
+  gold: new THREE.MeshStandardMaterial({ color: 0xffcc00, metalness: 1, roughness: 0.25, emissive: 0x553300, emissiveIntensity: 0.3 }),
+  wheel: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.6, roughness: 0.6 }),
+  rail: new THREE.MeshStandardMaterial({ color: 0xaabbcc, metalness: 0.95, roughness: 0.2 }),
+  sleeper: new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.95 }),
+  ballast: new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 1 }),
+  white: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+  red: new THREE.MeshBasicMaterial({ color: 0xff2200 }),
+  green: new THREE.MeshBasicMaterial({ color: 0x00ff44 }),
+};
+
+// ========================
+// 地形与轨道
+// ========================
+const groundGeo = new THREE.PlaneGeometry(4000, 4000);
+groundGeo.rotateX(-Math.PI / 2);
+const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ color: 0x1a2518, roughness: 1 }));
+ground.receiveShadow = true;
+scene.add(ground);
+
+const trackCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(0, 0, -250),
+  new THREE.Vector3(100, 0, -450),
+  new THREE.Vector3(280, 0, -520),
+  new THREE.Vector3(480, 0, -440),
+  new THREE.Vector3(600, 0, -250),
+  new THREE.Vector3(620, 0, -50),
+  new THREE.Vector3(500, 0, 150),
+  new THREE.Vector3(300, 0, 280),
+  new THREE.Vector3(50, 0, 300),
+  new THREE.Vector3(-180, 0, 220),
+  new THREE.Vector3(-320, 0, 80),
+  new THREE.Vector3(-350, 0, -100),
+  new THREE.Vector3(-250, 0, -280),
+  new THREE.Vector3(-100, 0, -350),
+  new THREE.Vector3(0, 0, -250),
+], true);
+
+const TRACK_LEN = trackCurve.getLength();
+const SAMPLE_N = 1600;
+const TRACK_PTS = trackCurve.getSpacedPoints(SAMPLE_N);
+
+// ==== 铺轨 ====
+const instRail = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12, 0.16, 2.1), MAT.rail, SAMPLE_N * 2);
+const instSleep = new THREE.InstancedMesh(new THREE.BoxGeometry(2.6, 0.1, 0.28), MAT.sleeper, SAMPLE_N);
+const instBallast = new THREE.InstancedMesh(new THREE.BoxGeometry(3.6, 0.12, 2.2), MAT.ballast, SAMPLE_N);
+const dummy = new THREE.Object3D();
+
+for (let i = 0; i < SAMPLE_N; i++) {
+  const t = i / SAMPLE_N;
+  const p = trackCurve.getPointAt(t);
+  const tan = trackCurve.getTangentAt(t);
+  const ang = Math.atan2(tan.x, tan.z);
+  const nx = Math.cos(ang), nz = -Math.sin(ang);
+  const off = 0.7175;
+
+  dummy.position.set(p.x, 0.05, p.z);
+  dummy.rotation.set(0, ang, 0);
+  dummy.updateMatrix();
+  instBallast.setMatrixAt(i, dummy.matrix);
+
+  dummy.position.set(p.x, 0.12, p.z);
+  dummy.updateMatrix();
+  instSleep.setMatrixAt(i, dummy.matrix);
+
+  dummy.position.set(p.x + nx * off, 0.22, p.z + nz * off);
+  dummy.updateMatrix();
+  instRail.setMatrixAt(i * 2, dummy.matrix);
+
+  dummy.position.set(p.x - nx * off, 0.22, p.z - nz * off);
+  dummy.updateMatrix();
+  instRail.setMatrixAt(i * 2 + 1, dummy.matrix);
+}
+instBallast.receiveShadow = true;
+instRail.castShadow = true;
+instSleep.receiveShadow = true;
+scene.add(instBallast, instSleep, instRail);
+
+// ==== 环境与树木 ====
+const treeGeo = new THREE.ConeGeometry(1.6, 7, 6);
+const treeMat = new THREE.MeshStandardMaterial({ color: 0x0f2818, roughness: 1 });
+const trees = new THREE.Group();
+const rng = mulberry32(20261018);
+for (let i = 0; i < 800; i++) {
+  const p = TRACK_PTS[Math.floor(rng() * SAMPLE_N)];
+  const tx = p.x + (rng() - 0.5) * 200;
+  const tz = p.z + (rng() - 0.5) * 200;
+  if (Math.hypot(tx - p.x, tz - p.z) < 12) continue;
+  const s = 0.7 + rng() * 0.8;
+  const tree = new THREE.Mesh(treeGeo, treeMat);
+  tree.position.set(tx, 3.5 * s, tz);
+  tree.scale.setScalar(s);
+  tree.castShadow = true;
+  trees.add(tree);
+}
+scene.add(trees);
+
+// ==== 电线杆 ====
+const poleGeo = new THREE.CylinderGeometry(0.15, 0.2, 10, 6);
+const poleMat = new THREE.MeshStandardMaterial({ color: 0x445566, metalness: 0.8, roughness: 0.4 });
+const poles = new THREE.Group();
+for (let i = 0; i < SAMPLE_N; i += 30) {
+  const p = TRACK_PTS[i];
+  const next = TRACK_PTS[Math.min(i + 1, SAMPLE_N - 1)];
+  const ang = Math.atan2(next.x - p.x, next.z - p.z);
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.set(p.x + Math.cos(ang) * 5, 5, p.z - Math.sin(ang) * 5);
+  pole.castShadow = true;
+  poles.add(pole);
+}
+scene.add(poles);
+
+// ==== 信号灯 ====
+const signals = [];
+function buildSignal(dist, limitVal) {
+  const t = dist / TRACK_LEN;
+  const p = trackCurve.getPointAt(t);
+  const ang = Math.atan2(trackCurve.getTangentAt(t).x, trackCurve.getTangentAt(t).z);
+  const nx = Math.cos(ang), nz = -Math.sin(ang);
+  const grp = new THREE.Group();
+
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 5, 8), MAT.dark);
+  pole.position.y = 2.5;
+  grp.add(pole);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.6, 0.5), MAT.dark);
+  head.position.y = 5.2;
+  grp.add(head);
+
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8), MAT.green);
+  lamp.position.set(0, 5.5, 0.3);
+  grp.add(lamp);
+
+  const gl = new THREE.PointLight(0x00ff44, 1.5, 15);
+  gl.position.set(0, 5.5, 0.5);
+  grp.add(gl);
+
+  grp.position.set(p.x + nx * 4, 0, p.z + nz * 4);
+  scene.add(grp);
+  signals.push({ d: dist, limit: limitVal, lamp, gl });
+}
+buildSignal(TRACK_LEN * 0.15, 80);
+buildSignal(TRACK_LEN * 0.35, 60);
+buildSignal(TRACK_LEN * 0.55, 40);
+buildSignal(TRACK_LEN * 0.72, 60);
+buildSignal(TRACK_LEN * 0.9, 80);
+
+// ==== 车站 ====
+function buildStation(dist) {
+  const t = dist / TRACK_LEN;
+  const p = trackCurve.getPointAt(t);
+  const ang = Math.atan2(trackCurve.getTangentAt(t).x, trackCurve.getTangentAt(t).z);
+  const nx = Math.cos(ang), nz = -Math.sin(ang);
+  const grp = new THREE.Group();
+
+  const plat = new THREE.Mesh(new THREE.BoxGeometry(40, 0.6, 5), new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.8 }));
+  plat.position.y = 0.8;
+  plat.receiveShadow = true;
+  grp.add(plat);
+
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(44, 0.3, 7), new THREE.MeshStandardMaterial({ color: 0x1a2a3a, metalness: 0.7, roughness: 0.3 }));
+  roof.position.y = 6.5;
+  roof.castShadow = true;
+  grp.add(roof);
+
+  const colGeo = new THREE.CylinderGeometry(0.2, 0.2, 5.5, 8);
+  for (let x = -18; x <= 18; x += 9) {
+    for (const z of [-2, 2]) {
+      const col = new THREE.Mesh(colGeo, poleMat);
+      col.position.set(x, 3.4, z);
+      grp.add(col);
+    }
+  }
+
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(12, 1.5, 0.2), new THREE.MeshStandardMaterial({ color: 0x002244, emissive: 0x2266aa, emissiveIntensity: 1.2 }));
+  sign.position.set(0, 5.5, 3);
+  grp.add(sign);
+
+  grp.position.set(p.x + nx * 6, 0, p.z + nz * 6);
+  grp.rotation.y = ang;
+  scene.add(grp);
+}
+buildStation(TRACK_LEN * 0.1);
+buildStation(TRACK_LEN * 0.4);
+buildStation(TRACK_LEN * 0.8);
+
+// ==== 天空与星空 ====
+const skyGeo = new THREE.SphereGeometry(1500, 24, 16);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: { top: { value: new THREE.Color(0x0a1830) }, bottom: { value: new THREE.Color(0x1a2a44) } },
+  vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: 'uniform vec3 top; uniform vec3 bottom; varying vec3 vP; void main(){ float h = normalize(vP).y * 0.5 + 0.5; gl_FragColor = vec4(mix(bottom, top, h), 1.0); }',
+});
+scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+const starGeo = new THREE.BufferGeometry();
+const starArr = new Float32Array(1500 * 3);
+const rng2 = mulberry32(42);
+for (let i = 0; i < 1500; i++) {
+  const u = rng2() * Math.PI * 2;
+  const v = Math.acos(2 * rng2() - 1) * 0.5;
+  const r = 1300;
+  starArr[i * 3] = Math.cos(u) * Math.sin(v) * r;
+  starArr[i * 3 + 1] = Math.cos(v) * r + 100;
+  starArr[i * 3 + 2] = Math.sin(u) * Math.sin(v) * r;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starArr, 3));
+const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2, transparent: true, opacity: 0.8 }));
+stars.visible = false;
+scene.add(stars);
+
+// ========================
+// 火车模型
+// ========================
+const trainGroup = new THREE.Group();
+scene.add(trainGroup);
+
+function buildWheel(r) {
+  const wheel = new THREE.Group();
+  const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.2, 20), MAT.wheel);
+  tire.rotation.z = Math.PI / 2;
+  tire.castShadow = true;
+  wheel.add(tire);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.3, r * 0.3, 0.22, 10), MAT.rail);
+  hub.rotation.z = Math.PI / 2;
+  wheel.add(hub);
+  return wheel;
+}
+
+function buildLoco() {
+  const g = new THREE.Group();
+
+  // 车身主体
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 3.2, 12), MAT.body);
+  body.position.y = 2.6;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  g.add(body);
+
+  // 车头前脸（斜面）
+  const front = new THREE.Mesh(new THREE.BoxGeometry(2.9, 2.8, 2.2), MAT.dark);
+  front.position.set(0, 2.4, -6.6);
+  front.rotation.x = 0.15;
+  front.castShadow = true;
+  g.add(front);
+
+  // 车顶
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.3, 12.2), MAT.dark);
+  roof.position.y = 4.3;
+  g.add(roof);
+
+  // 挡风玻璃
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.2, 0.15), MAT.glass);
+  glass.position.set(0, 3.5, -5.55);
+  glass.rotation.x = 0.2;
+  g.add(glass);
+
+  // 金色腰线
+  for (const side of [-1, 1]) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.16, 11), MAT.gold);
+    stripe.position.set(side * 1.51, 2.6, 0);
+    g.add(stripe);
+  }
+
+  // 排障器
+  const cow = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.6, 0.5), MAT.gold);
+  cow.position.set(0, 1.0, -7.4);
+  g.add(cow);
+
+  // 大灯
+  for (const x of [-0.85, 0.85]) {
+    const hl = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.15, 16), MAT.white);
+    hl.rotation.x = Math.PI / 2;
+    hl.position.set(x, 2.2, -7.4);
+    g.add(hl);
+  }
+
+  // 聚光灯
+  const spot = new THREE.SpotLight(0xffeedd, 8, 180, Math.PI / 5, 0.4, 1);
+  spot.position.set(0, 2.2, -7);
+  spot.target.position.set(0, 0, -60);
+  g.add(spot);
+  g.add(spot.target);
+  g.userData.spot = spot;
+
+  // 转向架与车轮
+  const wheels = [];
+  for (let i = 0; i < 3; i++) {
+    for (const side of [-1, 1]) {
+      const w = buildWheel(0.6);
+      w.position.set(side * 0.95, 0.6, (i - 1) * 3.2);
+      g.add(w);
+      wheels.push(w);
+    }
+  }
+  g.userData.wheels = wheels;
+
+  return g;
+}
+
+function buildCoach() {
+  const g = new THREE.Group();
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 3.0, 18), MAT.body);
+  body.position.y = 2.6;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  g.add(body);
+
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.25, 18.2), MAT.dark);
+  roof.position.y = 4.2;
+  g.add(roof);
+
+  for (let i = 0; i < 7; i++) {
+    for (const side of [-1, 1]) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.9, 1.4), MAT.glass);
+      win.position.set(side * 1.52, 3.1, -6 + i * 2);
+      g.add(win);
+    }
+  }
+
+  for (const side of [-1, 1]) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.16, 18), MAT.gold);
+    stripe.position.set(side * 1.51, 2.6, 0);
+    g.add(stripe);
+  }
+
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.5, 18.2), MAT.dark);
+  frame.position.y = 0.9;
+  g.add(frame);
+
+  const wheels = [];
+  for (let i = 0; i < 2; i++) {
+    for (const side of [-1, 1]) {
+      for (let j = 0; j < 2; j++) {
+        const w = buildWheel(0.55);
+        w.position.set(side * 0.95, 0.55, (i - 0.5) * 8 + j * 1.5);
+        g.add(w);
+        wheels.push(w);
+      }
+    }
+  }
+  g.userData.wheels = wheels;
+
+  return g;
+}
+
+const loco = buildLoco();
+trainGroup.add(loco);
+
+const coaches = [];
+const coachOffsets = [-19, -39, -59, -79];
+coachOffsets.forEach(off => {
+  const c = buildCoach();
+  c.userData.offset = off;
+  trainGroup.add(c);
+  coaches.push(c);
+});
+
+// 尾灯
+const tailLights = [];
+const lastCoach = coaches[coaches.length - 1];
+for (const x of [-0.8, 0.8]) {
+  const tl = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), MAT.red);
+  tl.position.set(x, 2.6, -9.05);
+  lastCoach.add(tl);
+  tailLights.push(tl);
+}
+
+// ========================
+// 音效
+// ========================
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+function playHorn() {
+  initAudio();
+  const o1 = audioCtx.createOscillator(), o2 = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o1.type = 'sawtooth'; o2.type = 'square';
+  o1.frequency.value = 311; o2.frequency.value = 415;
+  g.gain.setValueAtTime(0, audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+  g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.0);
+  o1.connect(g); o2.connect(g); g.connect(audioCtx.destination);
+  o1.start(); o2.start(); o1.stop(audioCtx.currentTime + 1.0); o2.stop(audioCtx.currentTime + 1.0);
+}
+
+// ========================
+// 物理与状态
+// ========================
+const state = {
+  dist: 0,
+  speed: 0,
+  notch: 0,
+  brake: 0,
+  running: false,
+  camMode: 0,
+  crashed: false,
+  violation: 0,
+  isNight: false,
+  currentLimit: 80,
+};
+
+const MAX_SPEED = 42; // m/s (约 150 km/h)
+const camPos = new THREE.Vector3();
+const camLook = new THREE.Vector3();
+
+function updatePhysics(dt) {
+  if (state.crashed) return;
+
+  const power = state.notch / 8;
+  let accel = 0;
+
+  if (power > 0 || state.speed > 0.1) {
+    accel = power * 3.5 * (1 - Math.pow(state.speed / MAX_SPEED, 2));
+  }
+  accel -= state.brake * 7;
+  accel -= 0.08;
+  accel -= 0.0008 * state.speed * state.speed;
+
+  state.speed += accel * dt;
+  if (state.speed < 0) state.speed = 0;
+  if (state.speed > MAX_SPEED) state.speed = MAX_SPEED;
+
+  state.dist += state.speed * dt;
+  if (state.dist > TRACK_LEN) state.dist -= TRACK_LEN;
+
+  // 限速判定
+  let lim = 80;
+  for (const s of signals) {
+    const gap = s.d - state.dist;
+    if (gap > -30 && gap < 200) lim = s.limit;
+  }
+  state.currentLimit = lim;
+
+  const kmh = state.speed * 3.6;
+  const over = kmh > lim + 3;
+  if (over) {
+    state.violation += dt;
+    if (state.violation > 3) {
+      state.crashed = true;
+      document.getElementById('crash').style.display = 'flex';
+      return;
+    }
+  } else {
+    state.violation = 0;
+  }
+
+  // UI 更新
+  document.getElementById('speed').textContent = Math.round(kmh);
+  document.getElementById('limit').textContent = lim;
+  document.getElementById('limit').style.color = over ? '#ff5b5b' : '#ffcc00';
+  document.getElementById('warning').classList.toggle('show', over);
+
+  // 车头位置
+  const t = state.dist / TRACK_LEN;
+  const pos = trackCurve.getPointAt(t);
+  const tan = trackCurve.getTangentAt(t);
+  const ang = Math.atan2(tan.x, tan.z);
+
+  loco.position.set(pos.x, 0, pos.z);
+  loco.rotation.y = ang;
+
+  const wAng = state.speed * dt;
+  loco.userData.wheels.forEach(w => w.children[0].rotation.y += wAng / 0.6);
+
+  // 车厢位置
+  coaches.forEach((c, i) => {
+    let d = state.dist + c.userData.offset;
+    if (d < 0) d += TRACK_LEN;
+    if (d > TRACK_LEN) d -= TRACK_LEN;
+    const ct = d / TRACK_LEN;
+    const cp = trackCurve.getPointAt(ct);
+    const ctan = trackCurve.getTangentAt(ct);
+    c.position.set(cp.x, 0, cp.z);
+    c.rotation.y = Math.atan2(ctan.x, ctan.z);
+    c.userData.wheels.forEach(w => w.children[0].rotation.y += wAng / 0.55);
+  });
+}
+
+function updateCamera(dt) {
+  const pos = loco.position;
+  const ang = loco.rotation.y;
+  const fwd = new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang));
+
+  if (state.camMode === 0) {
+    // 驾驶室
+    camPos.set(pos.x + fwd.x * -1.5, 4.2, pos.z + fwd.z * -1.5);
+    camLook.set(pos.x + fwd.x * 100, 3.5, pos.z + fwd.z * 100);
+    camera.position.lerp(camPos, Math.min(1, dt * 25));
+    camera.lookAt(camLook);
+  } else if (state.camMode === 1) {
+    // 追尾
+    camPos.set(pos.x - fwd.x * 30, 12, pos.z - fwd.z * 30);
+    camLook.set(pos.x, 2.5, pos.z);
+    camera.position.lerp(camPos, Math.min(1, dt * 5));
+    camera.lookAt(camLook);
+  } else {
+    // 无人机
+    const tm = performance.now() * 0.0004;
+    const r = 40;
+    camPos.set(pos.x + Math.cos(tm) * r, 25 + Math.sin(tm * 2) * 6, pos.z + Math.sin(tm) * r);
+    camLook.set(pos.x, 2, pos.z);
+    camera.position.lerp(camPos, Math.min(1, dt * 3));
+    camera.lookAt(camLook);
+  }
+}
+
+// ========================
+// 输入控制
+// ========================
+function notchUp() {
+  if (state.crashed) return;
+  state.notch = Math.min(8, state.notch + 1);
+  state.brake = 0;
+}
+function notchDown() {
+  if (state.crashed) return;
+  if (state.notch > 0) state.notch--;
+  else state.brake = Math.min(1, state.brake + 0.25);
+}
+function emergencyBrake() {
+  if (state.crashed) return;
+  state.notch = 0;
+  state.brake = 1;
+}
+function switchCam() {
+  if (state.crashed) return;
+  state.camMode = (state.camMode + 1) % 3;
+}
+function toggleNight() {
+  state.isNight = !state.isNight;
+  scene.background.setHex(state.isNight ? 0x020610 : 0x0a1520);
+  scene.fog.color.setHex(state.isNight ? 0x020610 : 0x0a1520);
+  hemi.intensity = state.isNight ? 0.15 : 1.4;
+  sun.intensity = state.isNight ? 0.05 : 2.2;
+  stars.visible = state.isNight;
+  loco.userData.spot.intensity = state.isNight ? 25 : 8;
+}
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'KeyW' || e.code === 'ArrowUp') notchUp();
+  else if (e.code === 'KeyS' || e.code === 'ArrowDown') notchDown();
+  else if (e.code === 'Space') { e.preventDefault(); emergencyBrake(); }
+  else if (e.code === 'KeyC') switchCam();
+  else if (e.code === 'KeyH') playHorn();
+  else if (e.code === 'KeyN') toggleNight();
+});
+
+// 手机触控绑定
+function bindBtn(id, fn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('touchstart', e => { e.preventDefault(); fn(); }, { passive: false });
+  el.addEventListener('click', e => { e.preventDefault(); fn(); });
+}
+bindBtn('b-power', notchUp);
+bindBtn('b-brake', notchDown);
+bindBtn('b-view', switchCam);
+bindBtn('b-horn', playHorn);
+
+// ========================
+// 初始化与循环
+// ========================
+document.getElementById('start-btn').addEventListener('click', () => {
+  initAudio();
+  const ov = document.getElementById('overlay');
+  ov.style.opacity = '0';
+  setTimeout(() => ov.style.display = 'none', 500);
+  state.running = true;
+  state.notch = 1;
+});
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// 初始位置
+function initTrainPosition() {
+  const pos = trackCurve.getPointAt(0);
+  const tan = trackCurve.getTangentAt(0);
+  const ang = Math.atan2(tan.x, tan.z);
+  loco.position.set(pos.x, 0, pos.z);
+  loco.rotation.y = ang;
+  coaches.forEach(c => {
+    let d = c.userData.offset;
+    if (d < 0) d += TRACK_LEN;
+    const ct = d / TRACK_LEN;
+    const cp = trackCurve.getPointAt(ct);
+    const ctan = trackCurve.getTangentAt(ct);
+    c.position.set(cp.x, 0, cp.z);
+    c.rotation.y = Math.atan2(ctan.x, ctan.z);
+  });
+}
+initTrainPosition();
+
+// 相机初始
+camera.position.set(0, 12, 30);
+camera.lookAt(0, 2, 0);
+
+const clock = new THREE.Clock();
+function loop() {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, clock.getDelta());
+  if (state.running) {
+    updatePhysics(dt);
+    updateCamera(dt);
+    sun.target.position.copy(loco.position);
+  }
+  renderer.render(scene, camera);
+}
+loop();
+
+// 工具函数
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+</script>
+</body>
+</html>
